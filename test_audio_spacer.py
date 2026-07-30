@@ -314,6 +314,24 @@ class TestExpand:
         assert allocs == [8000]
 
 
+class TestExtractUrl:
+    @pytest.mark.parametrize("text,expected", [
+        ("https://x.org/a.mp3", "https://x.org/a.mp3"),
+        ("listen to this: https://x.org/a.mp3 so good",
+         "https://x.org/a.mp3"),
+        ("Check out\nhttps://x.org/clip?id=1&t=2.\nAmazing.",
+         "https://x.org/clip?id=1&t=2"),
+        ("(https://x.org/a).", "https://x.org/a"),
+        ("“https://x.org/a”", "https://x.org/a"),
+        ("http://x.org/first https://y.org/second", "http://x.org/first"),
+        ("no link here", None),
+        ("", None),
+    ])
+    def test_extract(self, text, expected):
+        import server
+        assert server.extract_url(text) == expected
+
+
 class TestCLI:
     @pytest.fixture
     def speech_wav(self, tmp_path):

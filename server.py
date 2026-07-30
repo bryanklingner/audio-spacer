@@ -37,10 +37,19 @@ AUDIO_URL_RE = re.compile(
 START_RE = re.compile(r'startTime\\?":\s*([\d.]+)')
 END_RE = re.compile(r'endTime\\?":\s*([\d.]+)')
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{12}\.mp3$")
+URL_IN_TEXT_RE = re.compile(r'https?://[^\s<>"\']+')
 UA = {"User-Agent": "Mozilla/5.0 (audio-spacer)"}
 
 app = FastAPI()
 work = threading.Semaphore(2)
+
+
+def extract_url(text):
+    """Pull the first http(s) link out of possibly noisy pasted text."""
+    match = URL_IN_TEXT_RE.search(text)
+    if not match:
+        return None
+    return match.group(0).rstrip(".,;:!?)]}’”\"'")
 
 
 def require_public_host(url):
@@ -158,7 +167,10 @@ def space(file: UploadFile | None = File(None), url: str = Form(""),
                                             "(300 MB max).")
                     f.write(chunk)
         elif url.strip():
-            src = fetch_link(url.strip(), workdir)
+            link = extract_url(url)
+            if not link:
+                raise HTTPException(400, "No link found in the pasted text.")
+            src = fetch_link(link, workdir)
         else:
             raise HTTPException(400, "Choose a file or paste a link.")
 

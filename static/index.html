@@ -233,9 +233,8 @@ footer {
     <audio id="player" controls controlslist="nodownload"
            preload="metadata" oncontextmenu="return false"></audio>
     <button class="back" id="back" type="button">&larr; space another</button>
+    <footer>Spaced audio can be played for two hours, then it expires.</footer>
   </section>
-
-  <footer>Spaced audio can be played for two hours, then it expires.</footer>
 </main>
 
 <script>
@@ -289,14 +288,18 @@ $("form").addEventListener("submit", async ev => {
   $("error").classList.remove("show");
   const minutes = parseFloat($("target").value);
   if (!(minutes > 0)) return fail("Set a target length in minutes.");
-  if (mode === "link" && !urlIn.value.trim())
-    return fail("Paste a link to the audio.");
+  let link = "";
+  if (mode === "link") {
+    const m = urlIn.value.match(/https?:\/\/[^\s<>"']+/);
+    if (!m) return fail("Paste a link to the audio.");
+    link = m[0].replace(/[.,;:!?)\]}'"’”]+$/, "");
+  }
   if (mode === "file" && !fileIn.files[0])
     return fail("Choose an audio file.");
 
   const data = new FormData();
   if (mode === "file") data.append("file", fileIn.files[0]);
-  data.append("url", mode === "link" ? urlIn.value.trim() : "");
+  data.append("url", link);
   data.append("target", minutes * 60);
 
   $("go").disabled = true;
