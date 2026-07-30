@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>spacer</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%23d9a05b'%3E%3Crect x='3' y='10' width='3' height='12' rx='1'/%3E%3Crect x='8' y='7' width='3' height='18' rx='1'/%3E%3Crect x='21' y='7' width='3' height='18' rx='1'/%3E%3Crect x='26' y='10' width='3' height='12' rx='1'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='%2366c4b8'%3E%3Crect x='3' y='10' width='3' height='12' rx='1'/%3E%3Crect x='8' y='7' width='3' height='18' rx='1'/%3E%3Crect x='21' y='7' width='3' height='18' rx='1'/%3E%3Crect x='26' y='10' width='3' height='12' rx='1'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #171a21;
@@ -12,7 +12,7 @@
   --line: #303645;
   --text: #c9cdd6;
   --muted: #7d8494;
-  --amber: #d9a05b;
+  --accent: #66c4b8;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
 }
@@ -58,7 +58,7 @@ form { display: grid; gap: 1.4rem; }
   cursor: pointer;
   border-bottom: 1px solid transparent;
 }
-.mode.on { color: var(--amber); border-bottom-color: var(--amber); }
+.mode.on { color: var(--accent); border-bottom-color: var(--accent); }
 
 input[type="text"], input[type="number"] {
   background: var(--surface);
@@ -72,7 +72,7 @@ input[type="text"] { width: 100%; }
 input[type="text"]::placeholder { color: #565d6e; }
 input:focus-visible, button:focus-visible, .filebtn:focus-within,
 .strip:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -105,8 +105,8 @@ input:focus-visible, button:focus-visible, .filebtn:focus-within,
 .target-row .unit { color: var(--muted); }
 
 button.go {
-  background: var(--amber);
-  color: #1a1408;
+  background: var(--accent);
+  color: #0a1e1b;
   border: 0;
   border-radius: 6px;
   font: 500 1rem/1 inherit;
@@ -153,7 +153,7 @@ button.go:disabled { background: var(--line); color: var(--muted); cursor: wait;
   top: 0;
   bottom: -1px;
   width: 2px;
-  background: var(--amber);
+  background: var(--accent);
   margin-left: -1px;
 }
 audio { width: 100%; }
@@ -170,7 +170,7 @@ audio { width: 100%; }
   color: var(--muted);
   cursor: pointer;
 }
-.back:hover { color: var(--amber); }
+.back:hover { color: var(--accent); }
 
 footer {
   margin-top: 3.5rem;
@@ -199,7 +199,7 @@ footer {
                   aria-pressed="false">file</button>
         </div>
         <input type="text" id="url" aria-label="Audio link"
-               placeholder="https:// — paste a Waking Up share link"
+               placeholder="https:// — Waking Up share links work"
                autocomplete="off" spellcheck="false">
         <label class="filebtn hidden" id="filebtn">Choose a file…
           <input type="file" id="file"
@@ -209,7 +209,7 @@ footer {
       <div class="target-row">
         <label class="cap" for="target" style="margin:0">Target length</label>
         <input type="number" id="target" min="1" max="360" step="1"
-               value="45" required>
+               value="30" required>
         <span class="unit">min</span>
       </div>
       <button class="go" id="go" type="submit">Add space</button>
