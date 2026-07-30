@@ -3,8 +3,9 @@
 
 Detects silent regions ("gaps") at least --min-gap seconds long, then
 distributes the required extra time across those gaps proportionally to
-their lengths, inserting fill at each gap's midpoint. Fill is either the
-gap's own room tone (default) or pure digital silence.
+their lengths. Fill is inserted at the quietest point of each gap and is
+either the gap's own room tone, sourced from its quietest window so that
+breaths and mouth noise are never looped (default), or digital silence.
 
 Requires ffmpeg/ffprobe on PATH and numpy.
 """
@@ -17,6 +18,7 @@ import sys
 import numpy as np
 
 CROSSFADE_SEC = 0.005  # short fade at insert boundaries to avoid clicks
+TONE_WINDOW_SEC = 0.25  # room-tone source window within each gap
 
 
 def parse_length(s):
@@ -73,6 +75,8 @@ def find_gaps(audio, sr, threshold_db, min_gap, frame_ms=10):
     mono = audio.mean(axis=1)
     frame = max(1, int(sr * frame_ms / 1000))
     n_frames = len(mono) // frame
+    if n_frames == 0:
+        return []
     rms = np.sqrt(np.mean(
         mono[:n_frames * frame].reshape(n_frames, frame) ** 2, axis=1))
     silent = rms < 10 ** (threshold_db / 20)
@@ -91,10 +95,16 @@ def find_gaps(audio, sr, threshold_db, min_gap, frame_ms=10):
     return gaps
 
 
-def room_tone(gap_audio, length):
-    """Palindrome-tile the central half of a gap to the requested length."""
-    n = len(gap_audio)
-    seg = gap_audio[n // 4: n - n // 4]
+def quietest_window(mono, win):
+    """Start index of the lowest-energy window of length win."""
+    if len(mono) <= win:
+        return 0
+    energy = np.convolve(mono.astype(np.float64) ** 2, np.ones(win), "valid")
+    return int(np.argmin(energy))
+
+
+def room_tone(seg, length):
+    """Palindrome-tile a segment to the requested length."""
     tiles, forward = [], True
     while sum(len(t) for t in tiles) < length:
         tiles.append(seg if forward else seg[::-1])
@@ -108,8 +118,7 @@ def expand(audio, sr, gaps, extra_samples, fill):
     allocs, acc = [], 0.0
     for a, b in gaps:
         acc += extra_samples * (b - a) / total_gap
-        alloc = round(acc) - sum(allocs)
-        allocs.append(alloc)
+        allocs.append(round(acc) - sum(allocs))
 
     xf = int(CROSSFADE_SEC * sr)
     ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32)[:, None]
@@ -117,17 +126,20 @@ def expand(audio, sr, gaps, extra_samples, fill):
     for (a, b), alloc in zip(gaps, allocs):
         if alloc <= 0:
             continue
-        mid = (a + b) // 2
+        mono = audio[a:b].mean(axis=1)
+        win = max(1, min(len(mono) // 2, int(TONE_WINDOW_SEC * sr)))
+        s = quietest_window(mono, win)
+        ins = min(max(a + s + win // 2, a + xf), b - xf)
         if fill == "silence":
             chunk = np.zeros((alloc, audio.shape[1]), dtype=np.float32)
         else:
-            chunk = room_tone(audio[a:b], alloc).copy()
+            chunk = room_tone(audio[a + s:a + s + win], alloc).copy()
         if alloc > 2 * xf:
-            chunk[:xf] = chunk[:xf] * ramp + audio[mid - xf:mid] * (1 - ramp)
-            chunk[-xf:] = chunk[-xf:] * (1 - ramp) + audio[mid:mid + xf] * ramp
-        pieces.append(audio[prev:mid])
+            chunk[:xf] = chunk[:xf] * ramp + audio[ins - xf:ins] * (1 - ramp)
+            chunk[-xf:] = chunk[-xf:] * (1 - ramp) + audio[ins:ins + xf] * ramp
+        pieces.append(audio[prev:ins])
         pieces.append(chunk)
-        prev = mid
+        prev = ins
     pieces.append(audio[prev:])
     return np.concatenate(pieces), allocs
 
@@ -140,7 +152,7 @@ def main():
                     help="output file (omit to just list detected gaps)")
     ap.add_argument("-t", "--target-length", type=parse_length,
                     help="target duration: seconds or [hh:]mm:ss")
-    ap.add_argument("-g", "--min-gap", type=float, default=0.5,
+    ap.add_argument("-g", "--min-gap", type=float, default=1.0,
                     help="minimum gap length in seconds to expand "
                          "(default: %(default)s)")
     ap.add_argument("-d", "--threshold-db", type=float, default=-40.0,

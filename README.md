@@ -28,8 +28,18 @@ Options:
 - `-t, --target-length` — target duration, in seconds or `[hh:]mm:ss`
 - `-g, --min-gap` — minimum silence length in seconds to count as an
   expandable gap; shorter pauses (within speech) are preserved as-is
-  (default 0.5)
+  (default 1.0)
 - `-d, --threshold-db` — silence threshold in dBFS (default −40)
-- `--fill` — `roomtone` (default) loops the gap's own background noise
-  into the inserted span, avoiding an audible noise-floor drop;
-  `silence` inserts pure digital silence
+- `--fill` — `roomtone` (default) loops background noise from the
+  quietest window of the gap into the inserted span, avoiding both an
+  audible noise-floor drop and looped breath noise; `silence` inserts
+  pure digital silence
+
+Fill is inserted at the quietest point of each gap, so breaths at gap
+edges are never split or repeated.
+
+## Tests
+
+```sh
+.venv/bin/pytest
+```
