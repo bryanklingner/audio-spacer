@@ -99,8 +99,8 @@ def quietest_window(mono, win):
     """Start index of the lowest-energy window of length win."""
     if len(mono) <= win:
         return 0
-    energy = np.convolve(mono.astype(np.float64) ** 2, np.ones(win), "valid")
-    return int(np.argmin(energy))
+    csum = np.concatenate(([0.0], np.cumsum(mono.astype(np.float64) ** 2)))
+    return int(np.argmin(csum[win:] - csum[:-win]))
 
 
 def room_tone(seg, length):
