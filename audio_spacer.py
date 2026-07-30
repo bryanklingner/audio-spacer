@@ -54,7 +54,7 @@ def probe(path):
 def decode(path, sr, channels):
     raw = subprocess.run(
         ["ffmpeg", "-v", "error", "-i", path,
-         "-f", "f32le", "-acodec", "pcm_f32le", "-"],
+         "-f", "f32le", "-acodec", "pcm_f32le", "-ac", str(channels), "-"],
         capture_output=True, check=True).stdout
     audio = np.frombuffer(raw, dtype=np.float32)
     return audio.reshape(-1, channels)

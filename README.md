@@ -38,6 +38,17 @@ Options:
 Fill is inserted at the quietest point of each gap, so breaths at gap
 edges are never split or repeated.
 
+## Web app
+
+`server.py` (FastAPI) wraps the tool with an upload/link form and plays the
+result in the browser (no download offered). Waking Up share links are
+scraped for their clip audio and time range. Results expire after two hours.
+
+```sh
+docker build -t audio-spacer .
+docker run -d -p 8931:8000 --restart unless-stopped --name audio-spacer audio-spacer
+```
+
 ## Tests
 
 ```sh
