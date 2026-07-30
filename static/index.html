@@ -14,6 +14,7 @@
   --muted: #7d8494;
   --amber: #d9a05b;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; margin: 0; }
 body {
@@ -23,16 +24,16 @@ body {
   display: flex;
   justify-content: center;
   min-height: 100vh;
-  padding: 9vh 1.25rem 4rem;
+  padding: 12vh 1.25rem 4rem;
 }
 main { width: 100%; max-width: 26rem; }
+.hidden { display: none !important; }
 
 h1 {
   font-family: var(--mono);
   font-size: 1.6rem;
   font-weight: 500;
   letter-spacing: .55em;
-  color: var(--text);
   margin-bottom: 1rem;
   transition: letter-spacing .6s ease;
 }
@@ -43,18 +44,23 @@ h1.working { animation: breathe 2.6s ease-in-out infinite; }
 }
 .tagline { color: var(--muted); margin-bottom: 2.5rem; }
 
-form { display: grid; gap: 1.1rem; }
-.field .cap {
-  display: block;
+form { display: grid; gap: 1.4rem; }
+.switch { display: flex; gap: 1.1rem; margin-bottom: .5rem; }
+.mode {
+  background: none;
+  border: 0;
+  padding: 0 0 .15rem;
   font-family: var(--mono);
   font-size: .72rem;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: .4rem;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
 }
-input[type="text"] {
-  width: 100%;
+.mode.on { color: var(--amber); border-bottom-color: var(--amber); }
+
+input[type="text"], input[type="number"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -62,13 +68,13 @@ input[type="text"] {
   font: inherit;
   padding: .6rem .75rem;
 }
+input[type="text"] { width: 100%; }
 input[type="text"]::placeholder { color: #565d6e; }
 input:focus-visible, button:focus-visible, .filebtn:focus-within,
 .strip:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
-.hint { font-size: .8rem; color: var(--muted); margin-top: .35rem; }
 
 .filebtn {
   display: block;
@@ -84,13 +90,19 @@ input:focus-visible, button:focus-visible, .filebtn:focus-within,
 }
 .filebtn.has-file { color: var(--text); border-style: solid; }
 .filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.or {
-  text-align: center;
-  color: var(--muted);
+
+.cap {
+  display: block;
   font-family: var(--mono);
   font-size: .72rem;
   letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: .4rem;
 }
+.target-row { display: flex; align-items: baseline; gap: .6rem; }
+.target-row input { width: 5.5rem; }
+.target-row .unit { color: var(--muted); }
 
 button.go {
   background: var(--amber);
@@ -98,10 +110,8 @@ button.go {
   border: 0;
   border-radius: 6px;
   font: 500 1rem/1 inherit;
-  font-family: inherit;
   padding: .85rem;
   cursor: pointer;
-  margin-top: .4rem;
 }
 button.go:hover:not(:disabled) { filter: brightness(1.08); }
 button.go:disabled { background: var(--line); color: var(--muted); cursor: wait; }
@@ -114,13 +124,12 @@ button.go:disabled { background: var(--line); color: var(--muted); cursor: wait;
 }
 .error.show { display: block; }
 
-#result { display: none; margin-top: 2.75rem; }
-#result.show { display: block; }
+#result { margin-top: 1rem; }
 .summary {
   font-family: var(--mono);
   font-size: .85rem;
   color: var(--muted);
-  margin-bottom: .9rem;
+  margin-bottom: 1.1rem;
 }
 .summary b { color: var(--text); font-weight: 500; }
 
@@ -149,6 +158,20 @@ button.go:disabled { background: var(--line); color: var(--muted); cursor: wait;
 }
 audio { width: 100%; }
 
+.back {
+  display: inline-block;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 2rem;
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: .08em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.back:hover { color: var(--amber); }
+
 footer {
   margin-top: 3.5rem;
   font-size: .8rem;
@@ -162,37 +185,44 @@ footer {
 <body>
 <main>
   <h1 id="mark">spacer</h1>
-  <p class="tagline">Stretches the silences in a recording until it lasts as
-  long as you want. The speech is left untouched.</p>
 
-  <form id="form">
-    <div class="field">
-      <label class="cap" for="file">Audio file</label>
-      <label class="filebtn" id="filebtn">Choose a file…
-        <input type="file" id="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac">
-      </label>
-    </div>
-    <div class="or">or</div>
-    <div class="field">
-      <label class="cap" for="url">Link</label>
-      <input type="text" id="url" placeholder="https:// — Waking Up share links work"
-             autocomplete="off" spellcheck="false">
-    </div>
-    <div class="field">
-      <label class="cap" for="target">Target length</label>
-      <input type="text" id="target" placeholder="45:00" autocomplete="off"
-             inputmode="numeric" required>
-      <div class="hint">Minutes, or mm:ss</div>
-    </div>
-    <button class="go" id="go" type="submit">Add space</button>
-    <div class="error" id="error"></div>
-  </form>
+  <section id="setup">
+    <p class="tagline">Stretches the silences in a recording until it lasts as
+    long as you want. The speech is left untouched.</p>
 
-  <section id="result">
+    <form id="form">
+      <div>
+        <div class="switch" role="group" aria-label="Audio source">
+          <button type="button" class="mode on" id="mode-link"
+                  aria-pressed="true">link</button>
+          <button type="button" class="mode" id="mode-file"
+                  aria-pressed="false">file</button>
+        </div>
+        <input type="text" id="url" aria-label="Audio link"
+               placeholder="https:// — paste a Waking Up share link"
+               autocomplete="off" spellcheck="false">
+        <label class="filebtn hidden" id="filebtn">Choose a file…
+          <input type="file" id="file"
+                 accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac">
+        </label>
+      </div>
+      <div class="target-row">
+        <label class="cap" for="target" style="margin:0">Target length</label>
+        <input type="number" id="target" min="1" max="360" step="1"
+               value="45" required>
+        <span class="unit">min</span>
+      </div>
+      <button class="go" id="go" type="submit">Add space</button>
+      <div class="error" id="error"></div>
+    </form>
+  </section>
+
+  <section id="result" class="hidden">
     <div class="summary" id="summary"></div>
     <div class="strip" id="strip" tabindex="0" aria-label="Seek"></div>
     <audio id="player" controls controlslist="nodownload"
            preload="metadata" oncontextmenu="return false"></audio>
+    <button class="back" id="back" type="button">&larr; space another</button>
   </section>
 
   <footer>Spaced audio can be played for two hours, then it expires.</footer>
@@ -200,31 +230,29 @@ footer {
 
 <script>
 const $ = id => document.getElementById(id);
-const form = $("form"), fileIn = $("file"), urlIn = $("url");
+const fileIn = $("file"), urlIn = $("url");
 const player = $("player"), strip = $("strip");
+let mode = "link";
+
+function setMode(m) {
+  mode = m;
+  $("mode-link").classList.toggle("on", m === "link");
+  $("mode-file").classList.toggle("on", m === "file");
+  $("mode-link").setAttribute("aria-pressed", m === "link");
+  $("mode-file").setAttribute("aria-pressed", m === "file");
+  urlIn.classList.toggle("hidden", m !== "link");
+  $("filebtn").classList.toggle("hidden", m !== "file");
+  $("error").classList.remove("show");
+  if (m === "link") urlIn.focus();
+}
+$("mode-link").onclick = () => setMode("link");
+$("mode-file").onclick = () => { setMode("file"); fileIn.click(); };
 
 fileIn.addEventListener("change", () => {
   const f = fileIn.files[0];
   $("filebtn").classList.toggle("has-file", !!f);
   $("filebtn").firstChild.textContent = f ? f.name : "Choose a file…";
-  if (f) urlIn.value = "";
 });
-urlIn.addEventListener("input", () => {
-  if (urlIn.value) {
-    fileIn.value = "";
-    $("filebtn").classList.remove("has-file");
-    $("filebtn").firstChild.textContent = "Choose a file…";
-  }
-});
-
-function parseTarget(s) {
-  s = s.trim();
-  if (!s) return NaN;
-  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s) * 60;
-  const parts = s.split(":");
-  if (parts.length > 3 || parts.some(p => !/^\d+(\.\d+)?$/.test(p))) return NaN;
-  return parts.reduce((acc, p) => acc * 60 + parseFloat(p), 0);
-}
 
 function clock(sec) {
   sec = Math.round(sec);
@@ -238,22 +266,24 @@ function fail(msg) {
   e.classList.add("show");
 }
 
-form.addEventListener("submit", async ev => {
+$("form").addEventListener("submit", async ev => {
   ev.preventDefault();
   $("error").classList.remove("show");
-  const target = parseTarget($("target").value);
-  if (isNaN(target)) return fail("Target length should be minutes or mm:ss, like 45 or 45:00.");
-  if (!fileIn.files[0] && !urlIn.value.trim()) return fail("Choose a file or paste a link.");
+  const minutes = parseFloat($("target").value);
+  if (!(minutes > 0)) return fail("Set a target length in minutes.");
+  if (mode === "link" && !urlIn.value.trim())
+    return fail("Paste a link to the audio.");
+  if (mode === "file" && !fileIn.files[0])
+    return fail("Choose an audio file.");
 
   const data = new FormData();
-  if (fileIn.files[0]) data.append("file", fileIn.files[0]);
-  data.append("url", urlIn.value.trim());
-  data.append("target", target);
+  if (mode === "file") data.append("file", fileIn.files[0]);
+  data.append("url", mode === "link" ? urlIn.value.trim() : "");
+  data.append("target", minutes * 60);
 
   $("go").disabled = true;
   $("go").textContent = "Widening the pauses…";
   $("mark").classList.add("working");
-  $("result").classList.remove("show");
   try {
     const r = await fetch("/api/space", { method: "POST", body: data });
     const body = await r.json().catch(() => ({}));
@@ -267,6 +297,12 @@ form.addEventListener("submit", async ev => {
     $("mark").classList.remove("working");
   }
 });
+
+$("back").onclick = () => {
+  player.pause();
+  $("result").classList.add("hidden");
+  $("setup").classList.remove("hidden");
+};
 
 function show(info) {
   $("summary").innerHTML =
@@ -292,7 +328,8 @@ function show(info) {
   strip.appendChild(head);
 
   player.src = "/a/" + info.id + ".mp3";
-  $("result").classList.add("show");
+  $("setup").classList.add("hidden");
+  $("result").classList.remove("hidden");
   player.play().catch(() => {});
 
   let raf;
