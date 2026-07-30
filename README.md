@@ -77,6 +77,9 @@ docker build -t audio-spacer .
 docker run -d --name audio-spacer -p 8931:8000 --restart unless-stopped audio-spacer
 ```
 
+Or clone the repo on the host and run `./redeploy.sh`, which pulls the
+latest code, rebuilds, and restarts the container in one step.
+
 The app listens on port 8000 in the container. Working files live under
 `/data` (override with `SPACER_DATA`); they expire after two hours, so no
 volume is needed.
