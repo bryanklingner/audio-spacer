@@ -1,5 +1,10 @@
 # audio_spacer
 
+> This tool — code, tests, web app, and docs — was created with an LLM
+> (Claude). [llm_transcript.md](llm_transcript.md) is a redacted transcript
+> of the conversation that built it, showing how it was prompted from first
+> idea through debugging, UI iteration, and deployment.
+
 Stretch a spoken-word recording (a guided meditation, a talk, a lecture) to a
 target length by widening its natural pauses. The speech itself is untouched —
 only the silences grow.
