@@ -82,8 +82,22 @@ docker build -t audio-spacer .
 docker run -d --name audio-spacer -p 8931:8000 --restart unless-stopped audio-spacer
 ```
 
-Or clone the repo on the host and run `./redeploy.sh`, which pulls the
-latest code, rebuilds, and restarts the container in one step.
+Docker can also build straight from this repository, with no local clone —
+which keeps the deployed revision pinned in your compose file rather than
+depending on the state of a checkout on the host:
+
+```yaml
+services:
+  audio-spacer:
+    build:
+      context: https://github.com/bryanklingner/audio-spacer.git#v1.0.0
+    image: audio-spacer:v1.0.0
+    ports:
+      - "8931:8000"
+    restart: unless-stopped
+```
+
+Update by changing the pinned ref and running `docker compose up -d --build`.
 
 The app listens on port 8000 in the container. Working files live under
 `/data` (override with `SPACER_DATA`); they expire after two hours, so no
