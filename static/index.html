@@ -101,6 +101,7 @@ input:focus-visible, button:focus-visible, .filebtn:focus-within,
   margin-bottom: .4rem;
 }
 .target-row { display: flex; align-items: center; gap: .9rem; }
+.target-row .cap { min-width: 9.5rem; }
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -232,6 +233,11 @@ footer {
         <label class="cap" for="target" style="margin:0">Target length</label>
         <select id="target"></select>
       </div>
+      <div class="target-row">
+        <label class="cap" for="min-gap" style="margin:0">Shortest pause</label>
+        <select id="min-gap"
+                title="Pauses shorter than this are left alone"></select>
+      </div>
       <button class="go" id="go" type="submit">Add space</button>
       <div class="error" id="error"></div>
     </form>
@@ -277,6 +283,14 @@ for (let m = 1; m <= 120; m++) {
   $("target").appendChild(opt);
 }
 
+for (const g of [0.5, 1, 1.5, 2, 3, 5, 10]) {
+  const opt = document.createElement("option");
+  opt.value = g;
+  opt.textContent = g + " s";
+  if (g === 1) opt.selected = true;
+  $("min-gap").appendChild(opt);
+}
+
 fileIn.addEventListener("change", () => {
   const f = fileIn.files[0];
   $("filebtn").classList.toggle("has-file", !!f);
@@ -313,6 +327,7 @@ $("form").addEventListener("submit", async ev => {
   if (mode === "file") data.append("file", fileIn.files[0]);
   data.append("url", link);
   data.append("target", minutes * 60);
+  data.append("min_gap", $("min-gap").value);
 
   $("go").disabled = true;
   $("go").textContent = "Widening the pauses…";
