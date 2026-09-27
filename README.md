@@ -5,12 +5,12 @@
 > of the conversation that built it, showing how it was prompted from first
 > idea through debugging, UI iteration, and deployment.
 
-Stretch a spoken-word recording (a guided meditation, a talk, a lecture) to a
-target length by widening its natural pauses. The speech itself is untouched —
-only the silences grow.
+Stretch or squish a spoken-word recording (a guided meditation, a talk, a
+lecture) to a target length by widening or shortening its natural pauses. The
+speech itself is untouched — only the silences change.
 
 Comes as a command-line tool plus a small self-hostable web app ("spacer")
-that plays the stretched audio in the browser.
+that plays the respaced audio in the browser.
 
 ## How it works
 
@@ -30,7 +30,14 @@ that plays the stretched audio in the browser.
    reversed, forward, …) to the needed length so there are no seams, with
    5 ms crossfades at the boundaries. `--fill silence` inserts digital
    silence instead.
-5. **Encode** — ffmpeg encodes the result (192 kbps for lossy formats).
+5. **Squish** (target shorter than the input) — instead of inserting,
+   time is removed. Each gap keeps at least `min_gap` seconds, and the time
+   to remove is split in proportion to each gap's length *beyond* that
+   floor, so long silences shrink the most and pauses near the floor
+   barely change. Each cut is centered on the gap's quietest point, leaving
+   its edges (breaths, trailing reverb) intact, and joined with a 5 ms
+   crossfade. The dry run reports the shortest length reachable.
+6. **Encode** — ffmpeg encodes the result (192 kbps for lossy formats).
 
 ## CLI
 
@@ -46,9 +53,9 @@ Options:
 
 - `-t, --target-length` — target duration, in seconds or `[hh:]mm:ss`
 - `-g, --min-gap` — minimum silence length in seconds to count as an
-  expandable gap (default 1.0)
+  adjustable gap, and the floor no gap is squished below (default 1.0)
 - `-d, --threshold-db` — silence threshold in dBFS (default −40)
-- `--fill` — `roomtone` (default) or `silence`
+- `--fill` — `roomtone` (default) or `silence`, used when extending
 
 ## Web app
 
