@@ -1,4 +1,4 @@
-"""Web front end for audio_spacer: upload or link audio, get a spaced version.
+"""Web front end for audio_spacer: upload or link audio, get a respaced version.
 
 Accepts a direct audio URL, a page that embeds one (e.g. a Waking Up share
 link, including its clip start/end times), or an uploaded file. Results are
@@ -22,7 +22,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from audio_spacer import decode, encode, expand, find_gaps, fmt_time, probe
+from audio_spacer import (decode, encode, expand, find_gaps, fmt_time, probe,
+                          squish, squish_capacity)
 
 DATA = Path(os.environ.get("SPACER_DATA",
                            os.path.join(tempfile.gettempdir(), "spacer")))
@@ -185,16 +186,22 @@ def space(file: UploadFile | None = File(None), url: str = Form(""),
             duration = len(audio) / sr
             if duration > MAX_INPUT_SEC:
                 raise HTTPException(400, "Input is longer than 3 hours.")
-            if target < duration:
-                raise HTTPException(400, f"Target ({fmt_time(target)}) is "
-                                    f"shorter than the audio "
-                                    f"({fmt_time(duration)}).")
             gaps = find_gaps(audio, sr, THRESHOLD_DB, min_gap)
-            if not gaps and target > duration:
-                raise HTTPException(400, "No pauses long enough to widen "
+            delta = int(round(target * sr)) - len(audio)
+            if not gaps and delta != 0:
+                raise HTTPException(400, "No pauses long enough to adjust "
                                     "were found in this audio.")
-            extra = int(round(target * sr)) - len(audio)
-            result, allocs = expand(audio, sr, gaps, extra, "roomtone")
+            if delta >= 0:
+                result, allocs = expand(audio, sr, gaps, delta, "roomtone")
+            else:
+                shortest = len(audio) - squish_capacity(sr, gaps, min_gap)
+                if len(audio) + delta < shortest:
+                    raise HTTPException(
+                        400, f"This audio can only be squished to "
+                        f"{fmt_time(shortest / sr).split('.')[0]} with "
+                        f"{min_gap:g} s pauses; try a longer target or a "
+                        f"shorter pause.")
+                result, allocs = squish(audio, sr, gaps, -delta, min_gap)
             token = secrets.token_urlsafe(9)[:12]
             encode(result, str(DATA / f"{token}.mp3"), sr)
 
@@ -205,7 +212,8 @@ def space(file: UploadFile | None = File(None), url: str = Form(""),
         shifted += alloc
     return {"id": token, "input_seconds": round(duration, 3),
             "output_seconds": round(len(result) / sr, 3),
-            "gap_count": len(gaps), "gaps": out_gaps}
+            "gap_count": sum(1 for x in allocs if x),
+            "gaps": out_gaps}
 
 
 @app.get("/a/{name}")

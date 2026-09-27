@@ -210,8 +210,8 @@ footer {
   <h1 id="mark">spacer</h1>
 
   <section id="setup">
-    <p class="tagline">Stretches the silences in a recording until it lasts as
-    long as you want. The speech is left untouched.</p>
+    <p class="tagline">Stretches or shrinks the silences in a recording until
+    it lasts as long as you want. The speech is left untouched.</p>
 
     <form id="form">
       <div>
@@ -236,9 +236,9 @@ footer {
       <div class="target-row">
         <label class="cap" for="min-gap" style="margin:0">Shortest pause</label>
         <select id="min-gap"
-                title="Pauses shorter than this are left alone"></select>
+                title="Pauses shorter than this are left alone, and no pause is shrunk below it"></select>
       </div>
-      <button class="go" id="go" type="submit">Add space</button>
+      <button class="go" id="go" type="submit">Respace</button>
       <div class="error" id="error"></div>
     </form>
   </section>
@@ -330,7 +330,7 @@ $("form").addEventListener("submit", async ev => {
   data.append("min_gap", $("min-gap").value);
 
   $("go").disabled = true;
-  $("go").textContent = "Widening the pauses…";
+  $("go").textContent = "Adjusting the pauses…";
   $("mark").classList.add("working");
   try {
     const r = await fetch("/api/space", { method: "POST", body: data });
@@ -341,7 +341,7 @@ $("form").addEventListener("submit", async ev => {
     fail("The server could not be reached. Try again.");
   } finally {
     $("go").disabled = false;
-    $("go").textContent = "Add space";
+    $("go").textContent = "Respace";
     $("mark").classList.remove("working");
   }
 });
@@ -355,7 +355,8 @@ $("back").onclick = () => {
 function show(info) {
   $("summary").innerHTML =
     `<b>${clock(info.input_seconds)}</b> → <b>${clock(info.output_seconds)}</b>` +
-    ` · ${info.gap_count} pause${info.gap_count === 1 ? "" : "s"} widened`;
+    ` · ${info.gap_count} pause${info.gap_count === 1 ? "" : "s"} ` +
+    (info.output_seconds < info.input_seconds ? "shortened" : "widened");
 
   strip.querySelectorAll(".seg, .head").forEach(el => el.remove());
   const total = info.output_seconds;
