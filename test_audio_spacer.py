@@ -10,8 +10,9 @@ import numpy as np
 import pytest
 
 import audio_spacer
-from audio_spacer import (expand, find_gaps, fmt_time, parse_length,
-                          quietest_window, room_tone)
+from audio_spacer import (allocate, expand, find_gaps, fmt_time,
+                          parse_length, quietest_window, room_tone, squish,
+                          squish_capacity)
 
 SR = 8000
 FRAME = 80  # samples per 10ms detection frame at SR
@@ -332,6 +333,108 @@ class TestExtractUrl:
         assert server.extract_url(text) == expected
 
 
+class TestAllocate:
+    def test_proportional(self):
+        assert allocate(8000, [4000, 12000]) == [2000, 6000]
+
+    def test_exact_sum_with_rounding(self):
+        for total in (1, 2, 7, 1001):
+            assert sum(allocate(total, [3, 3, 3])) == total
+
+    def test_zero_weights_get_nothing(self):
+        assert allocate(100, [0, 5, 0, 5]) == [0, 50, 0, 50]
+
+    def test_all_zero_weights(self):
+        assert allocate(0, [0, 0]) == [0, 0]
+
+
+class TestSquish:
+    def gaps_for(self, audio, min_gap=0.5):
+        return find_gaps(audio, SR, -40, min_gap)
+
+    def test_output_length_exact(self):
+        audio = seq(tone(1), noise(3), tone(1), noise(2, seed=1), tone(1))
+        gaps = self.gaps_for(audio)
+        for remove in (1, 7, 41, 4000, squish_capacity(SR, gaps, 0.5)):
+            result, allocs = squish(audio, SR, gaps, remove, 0.5)
+            assert len(result) == len(audio) - remove
+            assert sum(allocs) == -remove
+
+    def test_removal_proportional_to_excess_over_floor(self):
+        audio = seq(tone(1), silence(1.5), tone(1), silence(3.5), tone(1))
+        gaps = self.gaps_for(audio)
+        # excess over a 0.5s floor: 1s and 3s
+        _, allocs = squish(audio, SR, gaps, 8000, 0.5)
+        assert allocs == [-2000, -6000]
+
+    def test_gap_at_floor_untouched(self):
+        audio = seq(tone(1), silence(0.5), tone(1), silence(2), tone(1))
+        gaps = self.gaps_for(audio)
+        _, allocs = squish(audio, SR, gaps, 4000, 0.5)
+        assert allocs == [0, -4000]
+
+    def test_capacity(self):
+        audio = seq(tone(1), silence(1.5), tone(1), silence(0.5), tone(1))
+        gaps = self.gaps_for(audio)
+        assert squish_capacity(SR, gaps, 0.5) == SR
+        assert squish_capacity(SR, gaps, 2.0) == 0
+
+    def test_too_much_removal_raises(self):
+        audio = seq(tone(1), silence(1.5), tone(1))
+        gaps = self.gaps_for(audio)
+        with pytest.raises(ValueError):
+            squish(audio, SR, gaps, SR + 1, 0.5)
+
+    def test_speech_preserved_exactly(self):
+        audio = seq(tone(1, 300), noise(2), tone(1, 700), noise(3, seed=1),
+                    tone(1, 500))
+        gaps = self.gaps_for(audio)
+        result, allocs = squish(audio, SR, gaps, 12345, 0.5)
+        (a0, b0), (a1, b1) = gaps
+        off0, off1 = allocs[0], allocs[0] + allocs[1]
+        assert np.array_equal(result[:a0], audio[:a0])
+        assert np.array_equal(result[b0 + off0:a1 + off0], audio[b0:a1])
+        assert np.array_equal(result[b1 + off1:], audio[b1:])
+
+    def test_keeps_gap_edges(self):
+        # breath-like bursts at each edge of a long gap survive the cut
+        audio = seq(tone(1), noise(0.3, amp=0.005), noise(4, seed=1),
+                    noise(0.3, amp=0.005, seed=2), tone(1))
+        gaps = self.gaps_for(audio)
+        (a, b), = gaps
+        result, (alloc,) = squish(audio, SR, gaps, 3 * SR, 0.8)
+        edge = int(0.35 * SR)
+        assert np.array_equal(result[:a + edge], audio[:a + edge])
+        assert np.array_equal(result[b + alloc - edge:], audio[b - edge:])
+
+    def test_squished_gap_stays_quiet(self):
+        audio = seq(tone(1), noise(4), tone(1))
+        gaps = self.gaps_for(audio)
+        result, (alloc,) = squish(audio, SR, gaps, 2 * SR, 0.5)
+        (a, b), = gaps
+        rms = np.sqrt(np.mean(result[a:b + alloc] ** 2))
+        assert rms < 10 ** (-40 / 20)
+
+    def test_stereo_preserved(self):
+        audio = seq(tone(1, ch=2), silence(2, ch=2), tone(1, ch=2))
+        result, _ = squish(audio, SR, self.gaps_for(audio), SR, 0.5)
+        assert result.shape == (3 * SR, 2)
+
+    def test_zero_removal_returns_identical_audio(self):
+        audio = seq(tone(1), silence(2), tone(1))
+        result, allocs = squish(audio, SR, self.gaps_for(audio), 0, 0.5)
+        assert np.array_equal(result, audio)
+        assert allocs == [0]
+
+    def test_tiny_floor_still_leaves_room_for_crossfade(self):
+        audio = seq(tone(1), silence(1), tone(1))
+        gaps = self.gaps_for(audio, min_gap=0)
+        cap = squish_capacity(SR, gaps, 0)
+        result, _ = squish(audio, SR, gaps, cap, 0)
+        assert len(result) == len(audio) - cap
+        assert cap == SR - 2 * XF
+
+
 class TestCLI:
     @pytest.fixture
     def speech_wav(self, tmp_path):
@@ -362,10 +465,24 @@ class TestCLI:
         assert r.returncode == 0, r.stderr
         assert wav_frames(out) == 3 * SR
 
-    def test_target_shorter_than_input_fails(self, speech_wav, tmp_path):
+    def test_target_below_shortest_possible_fails(self, speech_wav,
+                                                  tmp_path):
         r = run_cli(speech_wav, tmp_path / "out.wav", "-t", "1")
         assert r.returncode != 0
-        assert "shorter" in r.stderr
+        assert "shortest possible" in r.stderr
+
+    def test_dry_run_reports_shortest_possible(self, speech_wav):
+        r = run_cli(speech_wav, "-g", "0.5")
+        assert "shortest possible: 0:02.500" in r.stdout
+
+    def test_squish_to_exact_length(self, tmp_path):
+        path = tmp_path / "long.wav"
+        write_wav(path, seq(tone(1), silence(4), tone(1), silence(3),
+                            tone(1)))
+        out = tmp_path / "out.wav"
+        r = run_cli(path, out, "-t", "5")
+        assert r.returncode == 0, r.stderr
+        assert wav_frames(out) == 5 * SR
 
     def test_no_gaps_fails(self, tmp_path):
         path = tmp_path / "tone.wav"

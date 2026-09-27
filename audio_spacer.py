@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Extend an audio file to a target length by widening its silent gaps.
+"""Stretch or squish an audio file to a target length via its silent gaps.
 
-Detects silent regions ("gaps") at least --min-gap seconds long, then
-distributes the required extra time across those gaps proportionally to
+Detects silent regions ("gaps") at least --min-gap seconds long. To extend,
+the required extra time is distributed across those gaps proportionally to
 their lengths. Fill is inserted at the quietest point of each gap and is
 either the gap's own room tone, sourced from its quietest window so that
 breaths and mouth noise are never looped (default), or digital silence.
+
+To shorten, each gap keeps at least --min-gap seconds and the time to remove
+is distributed proportionally to each gap's length beyond that floor, so
+long silences shrink the most. Each cut is centered on the gap's quietest
+point and joined with a short crossfade.
 
 Requires ffmpeg/ffprobe on PATH and numpy.
 """
@@ -112,13 +117,30 @@ def room_tone(seg, length):
     return np.concatenate(tiles)[:length]
 
 
-def expand(audio, sr, gaps, extra_samples, fill):
-    total_gap = sum(b - a for a, b in gaps)
-    # proportional allocation, cumulative rounding so the total is exact
+def allocate(total, weights):
+    """Split total proportionally to weights, with cumulative rounding so
+    the parts sum exactly to total."""
+    weight_sum = sum(weights)
     allocs, acc = [], 0.0
-    for a, b in gaps:
-        acc += extra_samples * (b - a) / total_gap
+    for w in weights:
+        acc += total * w / weight_sum if weight_sum else 0.0
         allocs.append(round(acc) - sum(allocs))
+    return allocs
+
+
+def keep_samples(sr, min_keep):
+    """Samples each gap keeps when squishing (room for the crossfade)."""
+    return max(int(round(min_keep * sr)), 2 * int(CROSSFADE_SEC * sr))
+
+
+def squish_capacity(sr, gaps, min_keep):
+    """Most samples squish() can remove while each gap keeps min_keep."""
+    keep = keep_samples(sr, min_keep)
+    return sum(max(0, b - a - keep) for a, b in gaps)
+
+
+def expand(audio, sr, gaps, extra_samples, fill):
+    allocs = allocate(extra_samples, [b - a for a, b in gaps])
 
     xf = int(CROSSFADE_SEC * sr)
     ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32)[:, None]
@@ -144,23 +166,55 @@ def expand(audio, sr, gaps, extra_samples, fill):
     return np.concatenate(pieces), allocs
 
 
+def squish(audio, sr, gaps, remove_samples, min_keep):
+    """Remove remove_samples from the gaps, each keeping at least min_keep
+    seconds. Returns (audio, per-gap changes in samples, all <= 0)."""
+    keep = keep_samples(sr, min_keep)
+    excess = [max(0, b - a - keep) for a, b in gaps]
+    if remove_samples > sum(excess):
+        raise ValueError("not enough silence to remove")
+    cuts = allocate(remove_samples, excess)
+
+    xf = int(CROSSFADE_SEC * sr)
+    ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32)[:, None]
+    pieces, prev = [], 0
+    for (a, b), cut in zip(gaps, cuts):
+        if cut <= 0:
+            continue
+        mono = audio[a:b].mean(axis=1)
+        win = max(1, min(len(mono) // 2, int(TONE_WINDOW_SEC * sr)))
+        center = a + quietest_window(mono, win) + win // 2
+        # remove [s, s + cut), leaving keep / 2 at each edge of the gap,
+        # then crossfade audio[s:] into audio[s + cut:] over xf samples
+        lo, hi = a + keep // 2, b - (keep - keep // 2) - cut
+        s = min(max(center - cut // 2, lo), hi)
+        e = s + cut
+        pieces.append(audio[prev:s])
+        pieces.append(audio[s:s + xf] * (1 - ramp) + audio[e:e + xf] * ramp)
+        prev = e + xf
+    pieces.append(audio[prev:])
+    return np.concatenate(pieces), [-c for c in cuts]
+
+
 def main():
     ap = argparse.ArgumentParser(
-        description="Extend audio to a target length by widening silent gaps.")
+        description="Stretch or squish audio to a target length by widening "
+                    "or shortening its silent gaps.")
     ap.add_argument("input", help="input audio file")
     ap.add_argument("output", nargs="?",
                     help="output file (omit to just list detected gaps)")
     ap.add_argument("-t", "--target-length", type=parse_length,
                     help="target duration: seconds or [hh:]mm:ss")
     ap.add_argument("-g", "--min-gap", type=float, default=1.0,
-                    help="minimum gap length in seconds to expand "
+                    help="minimum gap length in seconds to adjust; when "
+                         "shortening, no gap is cut below this "
                          "(default: %(default)s)")
     ap.add_argument("-d", "--threshold-db", type=float, default=-40.0,
                     help="silence threshold in dBFS (default: %(default)s)")
     ap.add_argument("--fill", choices=("roomtone", "silence"),
                     default="roomtone",
-                    help="what to insert: the gap's own room tone, or pure "
-                         "silence (default: %(default)s)")
+                    help="what to insert when extending: the gap's own room "
+                         "tone, or pure silence (default: %(default)s)")
     args = ap.parse_args()
 
     sr, channels = probe(args.input)
@@ -168,6 +222,7 @@ def main():
     duration = len(audio) / sr
     gaps = find_gaps(audio, sr, args.threshold_db, args.min_gap)
     total_gap = sum(b - a for a, b in gaps) / sr
+    shortest = len(audio) - squish_capacity(sr, gaps, args.min_gap)
 
     print(f"{args.input}: {fmt_time(duration)}, {sr} Hz, {channels} ch")
     print(f"{len(gaps)} gaps >= {args.min_gap}s below {args.threshold_db} dBFS"
@@ -175,6 +230,7 @@ def main():
     for a, b in gaps:
         print(f"  {fmt_time(a / sr)} - {fmt_time(b / sr)}  "
               f"({(b - a) / sr:.2f}s)")
+    print(f"shortest possible: {fmt_time(shortest / sr)}")
 
     if args.output is None or args.target_length is None:
         if args.output or args.target_length:
@@ -182,20 +238,24 @@ def main():
                      "(or neither, to just list gaps)")
         return
 
-    extra = int(round(args.target_length * sr)) - len(audio)
-    if extra < 0:
-        sys.exit(f"error: target ({fmt_time(args.target_length)}) is shorter "
-                 f"than the input ({fmt_time(duration)})")
-    if not gaps and extra > 0:
-        sys.exit("error: no gaps found to expand; try a shorter --min-gap "
+    delta = int(round(args.target_length * sr)) - len(audio)
+    if not gaps and delta != 0:
+        sys.exit("error: no gaps found to adjust; try a shorter --min-gap "
                  "or a higher --threshold-db")
+    if delta < 0 and len(audio) + delta < shortest:
+        sys.exit(f"error: target ({fmt_time(args.target_length)}) is shorter "
+                 f"than the shortest possible ({fmt_time(shortest / sr)}) "
+                 f"with --min-gap {args.min_gap}")
 
-    result, allocs = expand(audio, sr, gaps, extra, args.fill)
+    if delta >= 0:
+        result, allocs = expand(audio, sr, gaps, delta, args.fill)
+    else:
+        result, allocs = squish(audio, sr, gaps, -delta, args.min_gap)
     for (a, b), alloc in zip(gaps, allocs):
-        print(f"  gap at {fmt_time(a / sr)}: +{alloc / sr:.2f}s")
+        print(f"  gap at {fmt_time(a / sr)}: {alloc / sr:+.2f}s")
     encode(result, args.output, sr)
     print(f"wrote {args.output}: {fmt_time(len(result) / sr)} "
-          f"(+{extra / sr:.2f}s across {len(gaps)} gaps)")
+          f"({delta / sr:+.2f}s across {len(gaps)} gaps)")
 
 
 if __name__ == "__main__":
